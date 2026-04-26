@@ -114,7 +114,7 @@ def get_series_id(api_key: str, title: str) -> str | None:
         response = requests.get(search_url, params=search_params)
         response.raise_for_status()
         return cast(str, response.json()['results'][0]['id'])
-    except (RequestException, JSONDecodeError, KeyError, IndexError) as e:
+    except (RequestException, KeyError, JSONDecodeError, IndexError) as e:
         logger.debug(e)
         logger.warning('TMDB API Connection Failed. Skipping...')
     return None
@@ -127,7 +127,7 @@ def get_movie_id(api_key: str, title: str) -> str | None:
         response = requests.get(search_url, params=search_params)
         response.raise_for_status()
         return cast(str, response.json()['results'][0]['id'])
-    except (RequestException, JSONDecodeError, KeyError, IndexError) as e:
+    except (RequestException, KeyError, JSONDecodeError, IndexError) as e:
         logger.debug(e)
         logger.warning('TMDB API Connection Failed. Skipping...')
     return None
@@ -144,7 +144,7 @@ def get_music_id(artist: str, album: str) -> str | None:
         response = requests.get(search_url, headers=headers, params=params)
         response.raise_for_status()
         return cast(str, response.json()['release-groups'][0]['id'])
-    except (RequestException, JSONDecodeError, KeyError, IndexError) as e:
+    except (RequestException, KeyError, IndexError, json.JSONDecodeError) as e:
         logger.debug(e)
         logger.warning('MusicBrainz API Connection Failed. Skipping...')
     return None
@@ -170,7 +170,7 @@ def get_series_poster(api_key: str, tmdb_id: str, languages: list[str]) -> str:
         response.raise_for_status()
         poster = select_poster(json.loads(response.text)['posters'], languages)
         return 'https://image.tmdb.org/t/p/w185/' + poster['file_path']
-    except (RequestException, JSONDecodeError, KeyError, IndexError) as e:
+    except (RequestException, KeyError, JSONDecodeError, IndexError) as e:
         logger.debug(e)
         logger.warning('No Poster Available on TMDB. Skipping...')
         return 'large_image'
@@ -188,7 +188,7 @@ def get_season_poster(
         response.raise_for_status()
         poster = select_poster(json.loads(response.text)['posters'], languages)
         return 'https://image.tmdb.org/t/p/w185/' + poster['file_path']
-    except (RequestException, JSONDecodeError, KeyError, IndexError):
+    except (RequestException, KeyError, JSONDecodeError, IndexError):
         return get_series_poster(api_key, tmdb_id, languages)
 
 
@@ -200,7 +200,7 @@ def get_movie_poster(api_key: str, tmdb_id: str, languages: list[str]) -> str:
         response.raise_for_status()
         poster = select_poster(json.loads(response.text)['posters'], languages)
         return 'https://image.tmdb.org/t/p/w185/' + poster['file_path']
-    except (RequestException, JSONDecodeError, KeyError, IndexError) as e:
+    except (RequestException, KeyError, JSONDecodeError, IndexError) as e:
         logger.debug(e)
         logger.warning('No Poster Available on TMDB. Skipping...')
         return 'large_image'
@@ -211,7 +211,7 @@ def get_release_group_cover(group_id: str) -> str:
         response = requests.get(f'https://coverartarchive.org/release-group/{group_id}')
         response.raise_for_status()
         return cast(str, json.loads(response.text)['images'][0]['image'])
-    except (RequestException, JSONDecodeError, KeyError, IndexError) as e:
+    except (RequestException, KeyError, JSONDecodeError, IndexError) as e:
         logger.debug(e)
         logger.warning('No Cover Art Available on MusicBrainz. Skipping...')
     return 'large_image'
@@ -224,7 +224,7 @@ def get_release_cover(group_id: str, release_id: str | None = None) -> str:
         response = requests.get(f'https://coverartarchive.org/release/{release_id}')
         response.raise_for_status()
         return cast(str, json.loads(response.text)['images'][0]['image'])
-    except (RequestException, JSONDecodeError, KeyError, IndexError):
+    except (RequestException, KeyError, JSONDecodeError, IndexError):
         return get_release_group_cover(group_id)
 
 
@@ -244,13 +244,13 @@ async def await_connection(discord_rpc: AioPresence, refresh_rate: int) -> None:
         break
 
 
-async def monitor_activity(config: SectionProxy, refresh_rate: int, seek_threshold: int) -> None:
+async def monitor_activity(config: SectionProxy, refresh_rate: int) -> None:
     client_id = config.get('DISCORD_CLIENT_ID', CLIENT_ID)
     discord_rpc = AioPresence(client_id)
     await await_connection(discord_rpc, refresh_rate)
-
     jf_api, server_name = await get_jf_api(config, refresh_rate)
-
+    if config.get('TMDB_API_KEY'):
+        check_tmdb_api(config['TMDB_API_KEY'])
     season_over_series = config.getboolean('SEASON_OVER_SERIES', True)
     release_over_group = config.getboolean('RELEASE_OVER_GROUP', True)
     find_best_match = config.getboolean('FIND_BEST_MATCH', True)
@@ -258,10 +258,7 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int, seek_thresho
     show_jf_icon = config.getboolean('SHOW_JELLYFIN_ICON', False)
     languages = re.split(r'[\s,]+', config.get('POSTER_LANGUAGES', ''))
 
-    if config.get('TMDB_API_KEY'):
-        check_tmdb_api(config['TMDB_API_KEY'])
-
-    activity = previous_activity = previous_start = None
+    activity = previous_activity = None
     previous_warning = previous_playstate = False
     cached_kwargs: dict[str, Any] = {}
     while True:
@@ -271,39 +268,36 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int, seek_thresho
                 for session in jf_api.sessions()
                 if config['JELLYFIN_USERNAME'] == session['UserName']
             )
-        except (StopIteration, KeyError):
-            await asyncio.sleep(refresh_rate)
-            continue
-        except (RequestException, JSONDecodeError, HTTPException) as e:
+        except StopIteration:
+            session = None
+        except (HTTPException, KeyError) as e:
             logger.debug(e)
             jf_api, server_name = await get_jf_api(config, refresh_rate)
             await asyncio.sleep(refresh_rate)
             continue
 
-        if 'NowPlayingItem' in session:
+        if session and 'NowPlayingItem' in session:
             try:
                 session_paused = session['PlayState']['IsPaused']
             except KeyError as e:
                 logger.warning(f'Missing Key in Session Data: {e}')
                 session_paused = False
-
             if session_paused and not show_when_paused:
                 if previous_activity is not None:
                     try:
                         await discord_rpc.clear()
-                    except (PyPresenceException, ConnectionRefusedError) as e:
+                    except PyPresenceException as e:
                         logger.debug(e)
                         await await_connection(discord_rpc, refresh_rate)
                         await asyncio.sleep(refresh_rate)
                         continue
                     logger.info('Activity Cleared')
-                    previous_activity = previous_start = None
-                    previous_playstate = False
+                    previous_activity, previous_playstate = None, False
                 await asyncio.sleep(refresh_rate)
                 continue
 
+            state = details = None
             try:
-                state = details = None
                 media_dict = session['NowPlayingItem']
                 media_types = config['MEDIA_TYPES'].split(',')
                 match media_type := media_dict['Type']:
@@ -329,25 +323,20 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int, seek_thresho
                         if 'Music' not in media_types:
                             await asyncio.sleep(refresh_rate)
                             continue
-                        if 'Artists' in media_dict and media_dict['Artists']:
+                        if 'Artists' in media_dict:
                             state = ', '.join(media_dict['Artists'])
-                        if 'Album' in media_dict and media_dict['Album']:
-                            if state:
+                            if 'Album' in media_dict:
                                 state += f' - {media_dict["Album"]}'
-                            else:
-                                state = media_dict['Album']
+                        elif 'Album' in media_dict:
+                            state = media_dict['Album']
                         details = media_dict['Name']
-                        activity = str(details)
-                        if state:
-                            activity += f' - {state.split(" - ")[0]}'
+                        activity = details
+                        if state is not None and activity is not None:
+                            activity += f' by {state.split(" - ")[0]}'
                     case _:
-                        if not previous_warning:
-                            logger.warning(f'Unsupported Media Type "{media_type}". Skipping...')
-                            previous_warning = True
+                        logger.warning(f'Unsupported Media Type "{media_type}". Ignoring...')
                         await asyncio.sleep(refresh_rate)
                         continue  # raise NotImplementedError()
-                if len(details) < 2:  # e.g., Chinese characters
-                    details += ' '
             except KeyError as e:
                 if not previous_warning:
                     logger.warning(f'Missing Key in Session Data: {e}. Skipping...')
@@ -355,53 +344,37 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int, seek_thresho
                 await asyncio.sleep(refresh_rate)
                 continue
             previous_warning = False
+            if len(details) < 2:  # e.g., Chinese characters
+                details += ' '
 
-            current_start = current_end = None
-            if not session_paused:
-                try:
-                    position_ticks = int(session['PlayState']['PositionTicks'])
-                    current_start = int(time.time() - position_ticks / 10_000_000)
-                    runtime_ticks = int(media_dict['RunTimeTicks'])
-                    current_end = int(current_start + runtime_ticks / 10_000_000)
-                except (KeyError, TypeError, ValueError):
-                    pass
-
-            media_changed = previous_activity != activity
-            playstate_changed = previous_playstate != session_paused
-
-            seek_detected = False
-            if previous_start is not None and current_start is not None and not playstate_changed:
-                if abs(current_start - previous_start) > seek_threshold:
-                    seek_detected = True
-
-            if media_changed:
+            if media_changed := previous_activity != activity:
                 poster_url = 'large_image'
                 state_url = large_url = details_url = None
 
                 if media_type == 'Episode' and config.get('TMDB_API_KEY'):
                     tmdb_id = None
-                    if 'SeriesId' in media_dict:
-                        try:
-                            series_item = jf_api.get_item(media_dict['SeriesId'])
-                            series_ids = series_item.get('ProviderIds', {})
-                            tmdb_id = series_ids.get('Tmdb') or series_ids.get('TheMovieDb')
-                        except (RequestException, JSONDecodeError, HTTPException):
-                            pass
-
-                    if not tmdb_id and find_best_match:
-                        logger.warning('No TMDB ID Found. Searching...')
-                        if 'SeriesName' in media_dict:
+                    tvdb_id = None
+                    try:
+                        series = jf_api.get_item(media_dict['SeriesId'])
+                        tvdb_id = series['ProviderIds'].get('Tvdb', '').strip()
+                        tmdb_id = (
+                            series['ProviderIds'].get('Tmdb', '').strip()
+                            or series['ProviderIds'].get('TheMovieDb', '').strip()
+                        )
+                        if not tmdb_id and find_best_match:
+                            logger.warning('No TMDB ID Found. Searching...')
                             tmdb_id = get_series_id(
                                 config['TMDB_API_KEY'], media_dict['SeriesName']
                             )
-                        if not tmdb_id:
-                            logger.warning('TMDB ID Search Failed. Skipping...')
-                    elif not tmdb_id:
+                            if not tmdb_id:
+                                logger.warning('TMDB ID Search Failed. Skipping...')
+                    except KeyError:
                         logger.warning('No TMDB ID Found. Skipping...')
-
+                    
                     if tmdb_id:
-                        details_url = f'https://www.themoviedb.org/tv/{tmdb_id}'
-                        season = media_dict['ParentIndexNumber']
+                        season = None
+                        if 'ParentIndexNumber' in media_dict:
+                            season = media_dict['ParentIndexNumber']
                         if season_over_series:
                             poster_url = get_season_poster(
                                 config['TMDB_API_KEY'], tmdb_id, languages, season
@@ -410,73 +383,79 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int, seek_thresho
                             poster_url = get_series_poster(
                                 config['TMDB_API_KEY'], tmdb_id, languages
                             )
+                    
+                    if tvdb_id:
+                        details_url = f'https://thetvdb.com/?tab=series&id={tvdb_id}'
+                        state_url = details_url
+                        large_url = details_url
+                    elif tmdb_id:
+                        details_url = f'https://www.themoviedb.org/tv/{tmdb_id}'
                         if 'IndexNumber' in media_dict:
                             episode = media_dict['IndexNumber']
                             state_url = f'{details_url}/season/{season}/episode/{episode}'
                         large_url = f'{details_url}/season/{season}'
 
                 elif media_type == 'Movie' and config.get('TMDB_API_KEY'):
-                    movie_ids = media_dict.get('ProviderIds', {})
-                    tmdb_id = movie_ids.get('Tmdb') or movie_ids.get('TheMovieDb')
-
-                    if not tmdb_id and find_best_match:
-                        logger.warning('No TMDB ID Found. Searching...')
-                        if 'Name' in media_dict:
+                    tmdb_id = None
+                    try:
+                        tmdb_id = (
+                            media_dict['ProviderIds'].get('Tmdb', '').strip()
+                            or media_dict['ProviderIds'].get('TheMovieDb', '').strip()
+                        )
+                        if not tmdb_id and find_best_match:
+                            logger.warning('No TMDB ID Found. Searching...')
                             tmdb_id = get_movie_id(config['TMDB_API_KEY'], media_dict['Name'])
-                        if not tmdb_id:
-                            logger.warning('TMDB ID Search Failed. Skipping...')
-                    elif not tmdb_id:
+                            if not tmdb_id:
+                                logger.warning('TMDB ID Search Failed. Skipping...')
+                    except KeyError:
                         logger.warning('No TMDB ID Found. Skipping...')
-
                     if tmdb_id:
                         poster_url = get_movie_poster(config['TMDB_API_KEY'], tmdb_id, languages)
                         details_url = f'https://www.themoviedb.org/movie/{tmdb_id}'
                         large_url = details_url
 
                 elif media_type == 'Audio':
-                    music_ids = media_dict.get('ProviderIds', {})
-                    group_id = music_ids.get('MusicBrainzReleaseGroup')
-
-                    album_item = None
-                    if not group_id and 'AlbumId' in media_dict:
-                        try:
-                            album_item = jf_api.get_item(media_dict['AlbumId'])
-                            album_music_ids = album_item.get('ProviderIds', {})
-                            group_id = album_music_ids.get('MusicBrainzReleaseGroup')
-                        except (RequestException, JSONDecodeError, HTTPException):
-                            pass
-
-                    if not group_id and find_best_match:
-                        logger.warning('No MusicBrainz ID Found. Searching...')
-                        if 'AlbumArtist' in media_dict and 'Album' in media_dict:
+                    group_id = None
+                    try:
+                        group_id = (
+                            media_dict['ProviderIds'].get('MusicBrainzReleaseGroup', '').strip()
+                        )
+                        if not group_id and find_best_match:
+                            logger.warning('No MusicBrainz ID Found. Searching...')
                             group_id = get_music_id(media_dict['AlbumArtist'], media_dict['Album'])
-                        if not group_id:
-                            logger.warning('MusicBrainz ID Search Failed. Skipping...')
-                    elif not group_id:
+                            if not group_id:
+                                logger.warning('MusicBrainz ID Search Failed. Skipping...')
+                    except KeyError:
                         logger.warning('No MusicBrainz ID Found. Skipping...')
-
                     if group_id:
                         release_id = None
                         if release_over_group:
-                            release_id = music_ids.get('MusicBrainzAlbum')
-                            if not release_id and 'AlbumId' in media_dict:
-                                try:
-                                    if album_item is None:
-                                        album_item = jf_api.get_item(media_dict['AlbumId'])
-                                    album_music_ids = album_item.get('ProviderIds', {})
-                                    release_id = album_music_ids.get('MusicBrainzAlbum')
-                                except (RequestException, JSONDecodeError, HTTPException):
-                                    pass
-
+                            release_id = (
+                                media_dict['ProviderIds'].get('MusicBrainzAlbum', '').strip()
+                            )
                         poster_url = get_release_cover(group_id, release_id)
-                        if 'MusicBrainzTrack' in music_ids:
-                            track_id = music_ids['MusicBrainzTrack']
+                        if 'MusicBrainzTrack' in media_dict['ProviderIds']:
+                            track_id = media_dict['ProviderIds']['MusicBrainzTrack']
                             details_url = f'https://musicbrainz.org/track/{track_id}'
                         state_url = f'https://musicbrainz.org/release-group/{group_id}'
                         if release_id:
                             large_url = f'https://musicbrainz.org/release/{release_id}'
                         else:
                             large_url = state_url
+
+                public_server_url = config.get('PUBLIC_SERVER_URL', '').strip().rstrip('/')
+                if public_server_url:
+                    item_id = media_dict.get('Id')
+                    if media_type == 'Episode':
+                        poster_url = f'{public_server_url}/Items/{item_id}/Images/Primary'
+                    elif media_type == 'Movie':
+                        poster_url = f'{public_server_url}/Items/{item_id}/Images/Primary'
+                    elif media_type == 'Audio':
+                        album_id = media_dict.get('AlbumId')
+                        if release_over_group and album_id:
+                            poster_url = f'{public_server_url}/Items/{album_id}/Images/Primary'
+                        else:
+                            poster_url = f'{public_server_url}/Items/{item_id}/Images/Primary'
 
                 cached_kwargs = {
                     'activity_type': activity_type,
@@ -490,43 +469,46 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int, seek_thresho
                     'large_url': large_url,
                 }
 
-            if media_changed or playstate_changed or seek_detected:
+            playstate_changed = previous_playstate != session_paused
+            if media_changed or playstate_changed:
+                start_time, end_time = None, None
+                if not session_paused:
+                    try:
+                        position_ticks = int(session['PlayState']['PositionTicks'])
+                        start_time = int(time.time() - position_ticks / 10_000_000)
+                        runtime_ticks = int(media_dict['RunTimeTicks'])
+                        end_time = int(start_time + runtime_ticks / 10_000_000)
+                    except KeyError:
+                        pass
                 small_image = 'small_image' if show_jf_icon else None
                 try:
                     await discord_rpc.update(
-                        **cached_kwargs,
-                        start=current_start,
-                        end=current_end,
-                        small_image=small_image,
+                        **cached_kwargs, start=start_time, end=end_time, small_image=small_image
                     )
-                except (PyPresenceException, ConnectionRefusedError) as e:
+                except PyPresenceException as e:
                     logger.debug(e)
                     await await_connection(discord_rpc, refresh_rate)
                     await asyncio.sleep(refresh_rate)
                     continue
 
-                if media_changed:
+                if previous_activity is None or previous_activity != activity:
                     logger.info(f'Activity Updated "{activity}"')
-                elif playstate_changed:
+                    logger.debug(media_dict)
+                else:
                     playstate = 'Paused' if session_paused else 'Resumed'
                     logger.debug(f'PlayState Changed "{activity}" ({playstate})')
-                elif seek_detected:
-                    logger.debug(f'Seek Detected "{activity}"')
-
                 previous_activity, previous_playstate = activity, session_paused
-                previous_start = current_start
 
         elif previous_activity is not None:
             try:
                 await discord_rpc.clear()
-            except (PyPresenceException, ConnectionRefusedError) as e:
+            except PyPresenceException as e:
                 logger.debug(e)
                 await await_connection(discord_rpc, refresh_rate)
                 await asyncio.sleep(refresh_rate)
                 continue
             logger.info('Activity Cleared')
-            previous_activity = previous_start = None
-            previous_playstate = False
+            previous_activity, previous_playstate = None, False
 
         await asyncio.sleep(refresh_rate)
 
@@ -537,7 +519,6 @@ def start_discord_rpc(
     config = load_config(ini_path)
     log_level = config.get('LOG_LEVEL', 'INFO').upper()
     refresh_rate = max(1, config.getint('REFRESH_RATE', 5))
-    seek_threshold = max(1, config.getint('SEEK_THRESHOLD', 10))
 
     logger.setLevel(log_level)
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s')
@@ -558,7 +539,7 @@ def start_discord_rpc(
     signal.signal(signal.SIGTERM, handle_shutdown)
 
     try:
-        asyncio.run(monitor_activity(config, refresh_rate, seek_threshold))
+        asyncio.run(monitor_activity(config, refresh_rate))
     except KeyboardInterrupt:
         pass
 

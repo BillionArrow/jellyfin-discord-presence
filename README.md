@@ -1,4 +1,6 @@
-# Discord RPC for Jellyfin
+# Discord RPC for Jellyfin (Direct-Fetch Edition)
+
+A direct-fetch Discord Rich Presence client for Jellyfin. Bypasses external API limits by pulling episode thumbnails straight from your own jellyfin server, useful for when you scraped metadata from tvdb instead of tmdb, because tmdb doesn't support alternate/dvd/etc order for episodes.
 
 Jellyfin RPC updates your Discord status with what you're watching or listening to on your Jellyfin server. Make sure your Discord client is open while using Jellyfin RPC.
 
@@ -7,33 +9,38 @@ Jellyfin RPC updates your Discord status with what you're watching or listening 
 
 ## Installation
 
-- For Windows and macOS, download the [latest release](https://github.com/kennethsible/jellyfin-rpc/releases) for the GUI.
-- For Linux, use [pip](https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=https://pip.pypa.io/en/stable/installation/&ved=2ahUKEwitg4Hr2fuTAxWQkIkEHchVE1gQFnoECCYQAQ&usg=AOvVaw31Hu8kE5Z4dpEnAanOzEpL) to install the CLI tool and refer to the [CLI usage](#usage-cli).<br>`pip install git+https://github.com/kennethsible/jellyfin-rpc.git`
+Use [pip](https://pip.pypa.io/en/stable/installation/) or `uv` to install the CLI tool:
+
+```bash
+pip install git+https://github.com/BillionArrow/jellyfin-rpc.git
+# OR
+uv tool install git+https://github.com/BillionArrow/jellyfin-rpc.git
+```
 
 ### Local Development
 
 1. Install Package Manager ([uv](https://docs.astral.sh/uv/getting-started/installation/))<br>`curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. Create Python Environment<br>`uv sync --extra gui`
-3. Build Standalone Executable<br>`uv run pyinstaller main.spec`
+2. Create Python Environment<br>`uv sync`
+3. Run the CLI<br>`uv run jellyfin-rpc --ini-path jellyfin_rpc.ini`
 
 ## Configuration
 
 To generate a Jellyfin API key, go to the server dashboard and select **API Keys** under **Advanced**.
 
-- Jellyfin Host (e.g., <https://jellyfin.example.com>)
+- Jellyfin Host (e.g., <http://192.168.1.100:8096>)
 - Jellyfin API Key
 - Jellyfin Username
 - TMDB API Key (Optional)
+- Public Server URL (Optional, e.g., <https://jellyfin.yourdomain.com>)
 
-If you prefer to use the CLI over the GUI (or you're on Linux), fill out the included [INI config](https://github.com/kennethsible/jellyfin-rpc/blob/main/jellyfin_rpc.ini). If you run into any issues, please change `log_level` in the INI to `DEBUG` and include the output in your GitHub Issue.
+If you provide a **Public Server URL**, the plugin will serve images and 16:9 episode thumbnails directly from your Jellyfin instance—bypassing TMDB/TVDB rate limits completely and perfectly matching your library's artwork and episode orders. Click-through links will also prioritize TVDB if you use it for metadata.
 
-- `%AppData%\Jellyfin RPC`
-- `~/Library/Application Support/Jellyfin RPC`
+To run the RPC, you must fill out an INI configuration file. You can find a template in [jellyfin_rpc.ini](https://github.com/BillionArrow/jellyfin-rpc/blob/main/jellyfin_rpc.ini). If you run into any issues, please change `log_level` in the INI to `DEBUG` and include the output in your GitHub Issue.
 
 To fetch posters and album covers, your media must be properly tagged with the appropriate provider IDs.
 
 > [!IMPORTANT]
-> [**TMDB**](https://www.themoviedb.org/) is used to fetch posters for movies and TV shows. However, you must create a [TMDB account](https://www.themoviedb.org/signup/) and generate an [API key](https://developer.themoviedb.org/docs/getting-started). [**MusicBrainz**](https://musicbrainz.org/) and the [**Cover Art Archive**](https://coverartarchive.org/) are used to fetch album covers.
+> [**TMDB**](https://www.themoviedb.org/) is used to fetch posters for movies and TV shows as a fallback if you don't use the Public Server URL feature. However, if your media is scraped using **TVDB**, this script will prioritize linking to TVDB to prevent any mismatch issues (like alternate/dvd viewing orders). [**MusicBrainz**](https://musicbrainz.org/) and the [**Cover Art Archive**](https://coverartarchive.org/) are used to fetch album covers.
 
 - `poster_languages` is a space- or comma-separated list of two-letter language codes ([ISO 639-1](https://en.wikipedia.org/wiki/ISO_639-1)) that indicates the preferred language(s) for TMDB posters.
 - `season_over_series` controls whether season posters are preferred over series posters for shows.
@@ -43,15 +50,10 @@ To fetch posters and album covers, your media must be properly tagged with the a
 - `show_server_name` shows your server name as the rich presence activity instead of saying Jellyfin.
 - `show_jellyfin_icon` shows a small Jellyfin icon in the bottom right of the poster or album cover.
 
-## Usage (GUI)
-
-![jellyfin_rpc_gui](images/jellyfin_rpc_gui.png)
-![jellyfin_rpc_gui_2](images/jellyfin_rpc_gui_2.png)
-
-![jellyfin_rpc_ico](images/jellyfin_rpc_ico.png)
-
-## Usage (CLI)
+## Usage
 
 ```bash
-jellyfin-rpc [-h] --ini-path INI_PATH [--log-path LOG_PATH]
+jellyfin-rpc --ini-path /path/to/jellyfin-rpc.ini
 ```
+
+You can optionally run it as a background service using `systemd` on Linux.
