@@ -1,6 +1,6 @@
-# Discord RPC for Jellyfin (Direct-Fetch Edition)
+# Jellyfin Discord Rich Presence
 
-A lightweight, CLI-only Discord Rich Presence client for Jellyfin. This fork bypasses external API limits by fetching 16:9 episode thumbnails directly from your Jellyfin instance, ensuring flawless metadata matching—even for alternate TVDB viewing orders.
+A lightweight, CLI-only Discord Rich Presence client for Jellyfin. This [fork](https://github.com/kennethsible/jellyfin-rpc) bypasses external API limits by fetching 16:9 episode thumbnails directly from your Jellyfin instance, ensuring flawless metadata matching, even for alternate TVDB viewing orders (TMDB lacks alternate/dvd/etc order).
 
 Jellyfin RPC updates your Discord status with what you're watching or listening to on your Jellyfin server. Make sure your Discord client is open while using Jellyfin RPC.
 
