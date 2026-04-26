@@ -1,27 +1,27 @@
 # Discord RPC for Jellyfin (Direct-Fetch Edition)
 
-A direct-fetch Discord Rich Presence client for Jellyfin. Bypasses external API limits by pulling episode thumbnails straight from your own jellyfin server, useful for when you scraped metadata from tvdb instead of tmdb, because tmdb doesn't support alternate/dvd/etc order for episodes.
+A lightweight, CLI-only Discord Rich Presence client for Jellyfin. This fork bypasses external API limits by fetching 16:9 episode thumbnails directly from your Jellyfin instance, ensuring flawless metadata matching—even for alternate TVDB viewing orders.
 
 Jellyfin RPC updates your Discord status with what you're watching or listening to on your Jellyfin server. Make sure your Discord client is open while using Jellyfin RPC.
 
-![jellyfin_rpc_series](images/jellyfin_rpc_series.png)
-![jellyfin_rpc_movie](images/jellyfin_rpc_music.png)
+## Prerequisites & Installation
 
-## Installation
+1. **Install `uv` (Package Manager)**  
+   If you don't already have `uv` installed, run:
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
 
-Use [pip](https://pip.pypa.io/en/stable/installation/) or `uv` to install the CLI tool:
+2. **Clone the Repository**
+   ```bash
+   git clone https://github.com/BillionArrow/jellyfin-rpc.git
+   cd jellyfin-rpc
+   ```
 
-```bash
-pip install git+https://github.com/BillionArrow/jellyfin-rpc.git
-# OR
-uv tool install git+https://github.com/BillionArrow/jellyfin-rpc.git
-```
-
-### Local Development
-
-1. Install Package Manager ([uv](https://docs.astral.sh/uv/getting-started/installation/))<br>`curl -LsSf https://astral.sh/uv/install.sh | sh`
-2. Create Python Environment<br>`uv sync`
-3. Run the CLI<br>`uv run jellyfin-rpc --ini-path jellyfin_rpc.ini`
+3. **Install Dependencies**
+   ```bash
+   uv sync
+   ```
 
 ## Configuration
 
@@ -52,8 +52,46 @@ To fetch posters and album covers, your media must be properly tagged with the a
 
 ## Usage
 
+To test the application in the foreground, simply run:
+
 ```bash
-jellyfin-rpc --ini-path /path/to/jellyfin-rpc.ini
+uv run jellyfin-rpc --ini-path jellyfin-rpc.ini
 ```
 
-You can optionally run it as a background service using `systemd` on Linux.
+### Running as a Background Service (systemd)
+
+To keep the Discord RPC running automatically in the background whenever you log in, you can set it up as a `systemd` user service on Linux.
+
+1. Create a service file at `~/.config/systemd/user/jellyfin-rpc.service`:
+
+```ini
+[Unit]
+Description=Jellyfin Discord RPC Background Service
+After=network.target
+
+[Service]
+Type=simple
+# Update WorkingDirectory if you cloned the repo somewhere else!
+WorkingDirectory=%h/git/jellyfin-rpc
+# %h automatically resolves to your home directory (e.g., /home/username)
+ExecStart=%h/.local/bin/uv run jellyfin-rpc --ini-path ./jellyfin-rpc.ini
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+2. Reload systemd, enable, and start the service:
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now jellyfin-rpc.service
+```
+
+3. You can check the logs anytime with:
+
+```bash
+journalctl --user -fu jellyfin-rpc.service
+```

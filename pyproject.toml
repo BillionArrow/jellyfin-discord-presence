@@ -1,7 +1,7 @@
 [project]
 name = "jellyfin-rpc"
 version = "1.7.4"
-description = "Discord RPC for Jellyfin"
+description = "A lightweight, CLI-only Discord Rich Presence client for Jellyfin featuring direct image fetching and TVDB priority."
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Ken Sible", email = "ksible@outlook.com" }]
