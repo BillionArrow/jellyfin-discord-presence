@@ -14,7 +14,7 @@ Jellyfin RPC updates your Discord status with what you're watching or listening 
 
 2. **Clone the Repository**
    ```bash
-   git clone https://github.com/BillionArrow/jellyfin-rpc.git
+   git clone https://github.com/BillionArrow/jellyfin-discord-presence.git
    cd jellyfin-rpc
    ```
 
@@ -31,11 +31,11 @@ To generate a Jellyfin API key, go to the server dashboard and select **API Keys
 - Jellyfin API Key
 - Jellyfin Username
 - TMDB API Key (Optional)
-- Public Server URL (Optional, e.g., <https://jellyfin.yourdomain.com>)
+- Public Server URL (Optional, but needed for discord to fetch images from your library, e.g., <https://jellyfin.yourdomain.com>)
 
-If you provide a **Public Server URL**, the plugin will serve images and 16:9 episode thumbnails directly from your Jellyfin instance—bypassing TMDB/TVDB rate limits completely and perfectly matching your library's artwork and episode orders. Click-through links will also prioritize TVDB if you use it for metadata.
+If you provide a **Public Server URL**, the plugin will serve images and 16:9 episode thumbnails directly from your Jellyfin instance, bypassing TMDB/TVDB rate limits completely and perfectly matching your library's artwork and episode orders. Click-through links will also prioritize TVDB if you use it for metadata.
 
-To run the RPC, you must fill out an INI configuration file. You can find a template in [jellyfin_rpc.ini](https://github.com/BillionArrow/jellyfin-rpc/blob/main/jellyfin_rpc.ini). If you run into any issues, please change `log_level` in the INI to `DEBUG` and include the output in your GitHub Issue.
+To run the RPC, you must fill out an INI configuration file. You can find a template in [jellyfin_rpc.ini](https://github.com/BillionArrow/jellyfin-discord-presence/blob/main/jellyfin_rpc.ini). If you run into any issues, please change `log_level` in the INI to `DEBUG` and include the output in your GitHub Issue.
 
 To fetch posters and album covers, your media must be properly tagged with the appropriate provider IDs.
 
