@@ -481,9 +481,16 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int) -> None:
                     except KeyError:
                         pass
                 small_image = 'small_image' if show_jf_icon else None
+                update_kwargs = dict(cached_kwargs)
+                if session_paused:
+                    paused_state = update_kwargs.get('state')
+                    if paused_state:
+                        update_kwargs['state'] = f'⏸️ {paused_state}'
+                    else:
+                        update_kwargs['state'] = '⏸️ Paused'
                 try:
                     await discord_rpc.update(
-                        **cached_kwargs, start=start_time, end=end_time, small_image=small_image
+                        **update_kwargs, start=start_time, end=end_time, small_image=small_image
                     )
                 except PyPresenceException as e:
                     logger.debug(e)
