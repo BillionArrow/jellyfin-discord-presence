@@ -346,6 +346,11 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int) -> None:
             previous_warning = False
             if len(details) < 2:  # e.g., Chinese characters
                 details += ' '
+            # Discord RPC has a 128 character limit on state and details
+            if details and len(details) > 128:
+                details = details[:125] + '...'
+            if state and len(state) > 128:
+                state = state[:125] + '...'
 
             if media_changed := previous_activity != activity:
                 poster_url = 'large_image'
