@@ -499,6 +499,7 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int) -> None:
                 except PyPresenceException as e:
                     logger.debug(e)
                     await await_connection(discord_rpc, refresh_rate)
+                    previous_activity, previous_playstate = None, False
                     await asyncio.sleep(refresh_rate)
                     continue
 
@@ -516,6 +517,7 @@ async def monitor_activity(config: SectionProxy, refresh_rate: int) -> None:
             except PyPresenceException as e:
                 logger.debug(e)
                 await await_connection(discord_rpc, refresh_rate)
+                previous_activity, previous_playstate = None, False
                 await asyncio.sleep(refresh_rate)
                 continue
             logger.info('Activity Cleared')
